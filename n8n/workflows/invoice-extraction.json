@@ -1,0 +1,209 @@
+{
+  "id": "ClaraInvoiceExtr",
+  "name": "Clara — Invoice Extraction",
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "nodes": [
+    {
+      "id": "node-webhook-trigger",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "clara-invoice-extraction",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "invoice-extraction",
+        "options": {}
+      }
+    },
+    {
+      "id": "node-download-file",
+      "name": "Download invoice file",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 0],
+      "parameters": {
+        "url": "=http://host.docker.internal:3000/api/internal/invoices/{{ $json.body.invoiceId }}/file",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ClaraInternalKey",
+          "name": "Clara Internal API"
+        }
+      }
+    },
+    {
+      "id": "node-build-request",
+      "name": "Build Gemini request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 0],
+      "parameters": {
+        "jsCode": "// Builds the Gemini generateContent request body.\n// The prompt is versioned in n8n/prompts/invoice-extraction.md — keep both in sync.\nconst { mimeType, data } = $input.item.json;\n\nconst systemPrompt = `You are an expert accounts-payable data-entry specialist. You read supplier invoice documents and extract structured billing data with extreme care.\n\nRules:\n1. Extract ONLY what is printed on the document. Never guess or infer values that are not visible.\n2. If a field is absent or unreadable, return null. Null is always better than a guess.\n3. Dates must be ISO format (YYYY-MM-DD). If a date like 03/04/2026 is ambiguous, use context such as written month names or date ordering to disambiguate; if still ambiguous, return null and add a warning.\n4. Amounts are plain numbers without currency symbols or thousands separators.\n5. currency is the 3-letter ISO 4217 code. Infer from a symbol only when unambiguous (a euro symbol means EUR). A bare dollar symbol could be USD, CAD, AUD or others - if no other clue exists, return null and add a warning.\n6. vendorName is the party ISSUING the invoice (the supplier), never the bill-to party.\n7. confidence is your honest overall probability (0 to 1) that every extracted field is correct. Blur, handwriting, unusual layouts, or any guesswork must lower it.\n8. warnings: short notes on anything a human reviewer should double-check.`;\n\nconst responseSchema = {\n  type: 'OBJECT',\n  properties: {\n    vendorName: { type: 'STRING', nullable: true, description: 'Supplier issuing the invoice, exactly as printed' },\n    invoiceNumber: { type: 'STRING', nullable: true },\n    invoiceDate: { type: 'STRING', nullable: true, description: 'YYYY-MM-DD' },\n    dueDate: { type: 'STRING', nullable: true, description: 'YYYY-MM-DD' },\n    currency: { type: 'STRING', nullable: true, description: 'ISO 4217 code, e.g. USD' },\n    subtotal: { type: 'NUMBER', nullable: true },\n    tax: { type: 'NUMBER', nullable: true },\n    total: { type: 'NUMBER', nullable: true },\n    confidence: { type: 'NUMBER', description: 'Overall confidence between 0 and 1' },\n    warnings: { type: 'ARRAY', items: { type: 'STRING' } }\n  },\n  required: ['vendorName', 'invoiceNumber', 'invoiceDate', 'dueDate', 'currency', 'subtotal', 'tax', 'total', 'confidence', 'warnings']\n};\n\nreturn [{\n  json: {\n    geminiRequest: {\n      systemInstruction: { parts: [{ text: systemPrompt }] },\n      contents: [{\n        role: 'user',\n        parts: [\n          { inline_data: { mime_type: mimeType, data } },\n          { text: 'Extract the structured billing data from this invoice document.' }\n        ]\n      }],\n      generationConfig: {\n        temperature: 0,\n        response_mime_type: 'application/json',\n        response_schema: responseSchema\n      }\n    }\n  }\n}];"
+      }
+    },
+    {
+      "id": "node-gemini-call",
+      "name": "Gemini: extract invoice data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, 0],
+      "onError": "continueErrorOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.geminiRequest) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ClaraGeminiKey01",
+          "name": "Google Gemini API Key"
+        }
+      }
+    },
+    {
+      "id": "node-parse-response",
+      "name": "Parse extraction",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, -100],
+      "parameters": {
+        "jsCode": "// Unwraps Gemini's response envelope into our internal report shape.\nconst response = $input.item.json;\nconst candidate = response.candidates?.[0];\nconst text = candidate?.content?.parts?.[0]?.text;\nif (!text) {\n  throw new Error(`Gemini returned no text (finishReason: ${candidate?.finishReason ?? 'unknown'})`);\n}\nconst parsed = JSON.parse(text);\nconst { confidence, warnings, ...fields } = parsed;\nreturn [{ json: { outcome: 'success', data: fields, confidence, warnings: warnings ?? [] } }];"
+      }
+    },
+    {
+      "id": "node-build-embed-request",
+      "name": "Build embedding request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, -100],
+      "parameters": {
+        "jsCode": "// Canonical text: the invoice's identity distilled to one line.\n// Embedding THIS (not the whole document) makes near-duplicates cluster\n// tightly: same vendor/number/date/total => nearly identical vectors,\n// even when scans or extractions differ slightly.\nconst d = $input.item.json.data;\nconst canonical = [\n  d.vendorName,\n  d.invoiceNumber,\n  d.invoiceDate,\n  d.total != null ? Number(d.total).toFixed(2) : null,\n  d.currency\n].map(v => v ?? 'unknown').join(' | ').toLowerCase();\n\nreturn [{\n  json: {\n    embedRequest: {\n      model: 'models/gemini-embedding-001',\n      content: { parts: [{ text: canonical }] },\n      outputDimensionality: 768\n    },\n    canonical\n  }\n}];"
+      }
+    },
+    {
+      "id": "node-gemini-embed",
+      "name": "Gemini: embed invoice",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1320, -100],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.embedRequest) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ClaraGeminiKey01",
+          "name": "Google Gemini API Key"
+        }
+      }
+    },
+    {
+      "id": "node-attach-embedding",
+      "name": "Attach embedding",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1540, -100],
+      "parameters": {
+        "jsCode": "// Merge the embedding into the extraction report. An embedding failure\n// (onError: continueRegularOutput upstream) yields null — the app treats\n// that as degraded duplicate protection, not a fatal error.\nconst report = $('Parse extraction').item.json;\nconst values = $input.item.json.embedding?.values ?? null;\nreturn [{ json: { ...report, embedding: values } }];"
+      }
+    },
+    {
+      "id": "node-build-failure",
+      "name": "Build failure payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 120],
+      "parameters": {
+        "jsCode": "// The Gemini call errored (auth, rate limit, network). Convert the error\n// into a failure report so the app can mark the invoice FAILED instead of\n// leaving it stuck in EXTRACTING forever.\nconst item = $input.item.json;\nconst message =\n  item.error?.message ??\n  item.error?.description ??\n  (typeof item.error === 'string' ? item.error : JSON.stringify(item).slice(0, 800));\nreturn [{ json: { outcome: 'failure', error: `Gemini request failed: ${message}` } }];"
+      }
+    },
+    {
+      "id": "node-report-result",
+      "name": "Report result to app",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1760, 0],
+      "parameters": {
+        "method": "POST",
+        "url": "=http://host.docker.internal:3000/api/internal/invoices/{{ $('Webhook').item.json.body.invoiceId }}/extraction",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ClaraInternalKey",
+          "name": "Clara Internal API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [{ "node": "Download invoice file", "type": "main", "index": 0 }]
+      ]
+    },
+    "Download invoice file": {
+      "main": [
+        [{ "node": "Build Gemini request", "type": "main", "index": 0 }]
+      ]
+    },
+    "Build Gemini request": {
+      "main": [
+        [{ "node": "Gemini: extract invoice data", "type": "main", "index": 0 }]
+      ]
+    },
+    "Gemini: extract invoice data": {
+      "main": [
+        [{ "node": "Parse extraction", "type": "main", "index": 0 }],
+        [{ "node": "Build failure payload", "type": "main", "index": 0 }]
+      ]
+    },
+    "Parse extraction": {
+      "main": [
+        [{ "node": "Build embedding request", "type": "main", "index": 0 }]
+      ]
+    },
+    "Build embedding request": {
+      "main": [
+        [{ "node": "Gemini: embed invoice", "type": "main", "index": 0 }]
+      ]
+    },
+    "Gemini: embed invoice": {
+      "main": [
+        [{ "node": "Attach embedding", "type": "main", "index": 0 }]
+      ]
+    },
+    "Attach embedding": {
+      "main": [
+        [{ "node": "Report result to app", "type": "main", "index": 0 }]
+      ]
+    },
+    "Build failure payload": {
+      "main": [
+        [{ "node": "Report result to app", "type": "main", "index": 0 }]
+      ]
+    }
+  }
+}

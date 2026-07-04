@@ -1,0 +1,20 @@
+# Environment & secrets — never commit these
+.env
+.env.local
+.env.*.local
+
+# Dependencies
+node_modules/
+
+# Next.js build output
+web/.next/
+web/out/
+
+# Prisma generated client lives in node_modules, nothing extra to ignore
+
+# Docker volumes are named volumes (not in repo), nothing extra to ignore
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.log
