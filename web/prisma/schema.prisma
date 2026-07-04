@@ -90,6 +90,9 @@ model Invoice {
   fileName    String
   mimeType    String
   storagePath String // local disk for now; same column works for S3 keys later
+  /// External origin id — for EMAIL invoices, the Gmail message id. Used to
+  /// skip re-ingesting a message the poller has already delivered.
+  sourceRef   String?
 
   // Extracted fields — all nullable: they don't exist until extraction succeeds
   vendorId      String?
@@ -124,6 +127,7 @@ model Invoice {
   @@unique([vendorId, invoiceNumber])
   @@index([status])
   @@index([createdAt])
+  @@index([sourceRef])
 }
 
 /// Append-only. Every state transition and every decision (AI or human)

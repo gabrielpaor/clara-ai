@@ -1,0 +1,48 @@
+{
+  "id": "ClaraNotify00001",
+  "name": "Clara — Notifications",
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "nodes": [
+    {
+      "id": "node-notify-webhook",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "clara-notify",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "notify",
+        "options": {}
+      }
+    },
+    {
+      "id": "node-send-email",
+      "name": "Send notification email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [220, 0],
+      "parameters": {
+        "operation": "send",
+        "sendTo": "={{ $json.body.notifyTo }}",
+        "subject": "={{ $json.body.subject }}",
+        "message": "={{ $json.body.html }}",
+        "options": {}
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "ClaraGmailOAuth2",
+          "name": "Clara Gmail"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [{ "node": "Send notification email", "type": "main", "index": 0 }]
+      ]
+    }
+  }
+}

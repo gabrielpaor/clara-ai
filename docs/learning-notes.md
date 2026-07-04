@@ -147,6 +147,34 @@ cookie), and the approve/reject endpoints that record HUMAN transitions.
 - Verified live: unauthenticated page → 307 to /login, unauthenticated API
   → 401, double-approval → 409 from the transition guard.
 
+### Phase 5 — Email ingestion and notifications
+
+**What was built:** an n8n Gmail-trigger workflow that fans out email
+attachments and delivers them to a new internal ingest endpoint; a shared
+`createAndDispatchInvoice` used by both upload and email intake; outbound
+review/failure notification emails via a small n8n notify workflow.
+
+**What you learned:**
+
+- **One intake path for every source:** upload and email both call the
+  same dispatch function, so the row-first guarantee, storage, handoff,
+  and audit can never drift apart between entry points (the refactor is
+  the lesson — duplication between entry points is where bugs breed).
+- **An inbox is an open door:** unknown senders are declined before any
+  LLM sees their attachment — processing unsolicited documents through an
+  AI pipeline invites prompt injection and API-bill spam. Allowlist =
+  vendor emails + an env escape hatch for testing.
+- **Poller dedup:** Gmail's trigger can re-deliver a message (restarts,
+  overlaps), so ingest is idempotent on (messageId, fileName) — "ignored:
+  already ingested" is a success response, not an error.
+- **Fire-and-forget notifications:** a broken notifier must never break
+  invoice processing. Subtlety found live: `fetch` only *rejects* on
+  network failure — an HTTP 404 resolves normally, so both paths need
+  explicit handling.
+- **Prisma shadow database gotcha:** `migrate dev` replays history into a
+  fresh shadow DB, which doesn't run docker init scripts — so `CREATE
+  EXTENSION vector` had to become a (backdated) migration itself.
+
 ---
 
 ## Part 2 — Glossary

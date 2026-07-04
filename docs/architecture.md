@@ -78,7 +78,7 @@ Every transition is written to an `audit_log` table with actor
 | 2 ✅ | Upload → webhook → LLM extraction pipeline (Gemini free tier) | Webhooks, prompt engineering, structured outputs |
 | 3 ✅ | Auto-approval rules engine + near-duplicate detection (pgvector) | Business rules, embeddings, unit testing |
 | 4 ✅ | Dashboard + session auth + human approval queue (HITL complete) | Stateless sessions, route protection, human transitions |
-| 5 | Gmail ingestion + notification emails | OAuth, email automation |
+| 5 ✅ | Email ingestion (allowlist, message dedup) + notification emails | OAuth, email automation, intake refactor |
 | 6 | Error workflows, retries, audit log, monitoring dashboard | Production reliability |
 | 7 | Deployment (Railway/Vercel), README polish, demo | DevOps, storytelling |
 

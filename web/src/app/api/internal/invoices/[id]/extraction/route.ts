@@ -6,6 +6,7 @@
 import { prisma } from "@/lib/db";
 import { transitionInvoice } from "@/lib/invoices";
 import { isInternalRequest, unauthorized } from "@/lib/internal-auth";
+import { notifyInvoiceOutcome } from "@/lib/notify";
 import { evaluateInvoice } from "@/lib/rules";
 import {
   extractionReportSchema,
@@ -125,6 +126,15 @@ export async function POST(
       action: "EXTRACTION_FAILED",
       reason: report.error.slice(0, 1000),
     });
+    notifyInvoiceOutcome({
+      invoiceId: id,
+      status: "FAILED",
+      vendorName: invoice.vendorNameRaw,
+      fileName: invoice.fileName,
+      total: null,
+      currency: null,
+      reason: report.error.slice(0, 300),
+    });
     return Response.json({ ok: true, status: "FAILED" });
   }
 
@@ -192,6 +202,18 @@ export async function POST(
       checks: decision.checks,
     },
   });
+
+  if (!decision.approve) {
+    notifyInvoiceOutcome({
+      invoiceId: id,
+      status: "NEEDS_REVIEW",
+      vendorName: data.vendorName,
+      fileName: invoice.fileName,
+      total: data.total === null ? null : data.total.toFixed(2),
+      currency: data.currency,
+      reason: decision.reasons.join("; "),
+    });
+  }
 
   return Response.json({ ok: true, status: updated.status, flags });
 }

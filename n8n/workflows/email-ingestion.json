@@ -1,0 +1,72 @@
+{
+  "id": "ClaraEmailIngest",
+  "name": "Clara — Email Ingestion",
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "nodes": [
+    {
+      "id": "node-gmail-trigger",
+      "name": "Gmail Trigger",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0],
+      "parameters": {
+        "pollTimes": { "item": [{ "mode": "everyMinute" }] },
+        "simple": false,
+        "filters": { "q": "has:attachment", "readStatus": "unread" },
+        "options": { "downloadAttachments": true }
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "ClaraGmailOAuth2",
+          "name": "Clara Gmail"
+        }
+      }
+    },
+    {
+      "id": "node-expand-attachments",
+      "name": "Expand attachments",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 0],
+      "parameters": {
+        "jsCode": "// One email can carry several attachments; fan out to one item per\n// usable document. Policy (allowlist, dedup) is NOT decided here — the\n// app owns that; this node only reshapes data.\nconst ALLOWED = new Set(['application/pdf', 'image/png', 'image/jpeg', 'image/webp']);\nconst out = [];\nfor (const item of $input.all()) {\n  const sender =\n    item.json.from?.value?.[0]?.address ??\n    String(item.json.from ?? '').match(/[\\w.+-]+@[\\w-]+\\.[\\w.-]+/)?.[0] ??\n    null;\n  if (!sender) continue;\n  const subject = item.json.subject ?? '(no subject)';\n  const messageId = item.json.id;\n  for (const key of Object.keys(item.binary ?? {})) {\n    const att = item.binary[key];\n    if (!ALLOWED.has(att.mimeType)) continue;\n    out.push({\n      json: {\n        fileName: att.fileName ?? `${key}`,\n        mimeType: att.mimeType,\n        data: att.data, // base64 (in-memory binary mode)\n        sender,\n        subject,\n        messageId\n      }\n    });\n  }\n}\nreturn out; // empty array = nothing to do, execution ends quietly"
+      }
+    },
+    {
+      "id": "node-deliver-to-app",
+      "name": "Deliver to app",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 0],
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:3000/api/internal/invoices/ingest",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ClaraInternalKey",
+          "name": "Clara Internal API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Gmail Trigger": {
+      "main": [
+        [{ "node": "Expand attachments", "type": "main", "index": 0 }]
+      ]
+    },
+    "Expand attachments": {
+      "main": [
+        [{ "node": "Deliver to app", "type": "main", "index": 0 }]
+      ]
+    }
+  }
+}

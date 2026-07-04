@@ -1,22 +1,12 @@
-// Public upload endpoint: accepts an invoice document, persists it, and
-// hands off to the n8n extraction workflow.
-//
-// Data flow: create row (RECEIVED) → store file → fire n8n webhook →
-// transition to EXTRACTING (or FAILED if n8n is unreachable). The row is
-// created BEFORE the webhook so a crashed handoff still leaves a visible,
-// retryable invoice instead of a silently lost file.
+// Public upload endpoint (dashboard users). Intake itself — row creation,
+// storage, n8n handoff — lives in lib/dispatch.ts, shared with email ingest.
 import { prisma } from "@/lib/db";
-import { transitionInvoice } from "@/lib/invoices";
+import {
+  ALLOWED_MIME_TYPES,
+  createAndDispatchInvoice,
+  MAX_FILE_BYTES,
+} from "@/lib/dispatch";
 import { getSession } from "@/lib/session";
-import { saveInvoiceFile } from "@/lib/storage";
-
-const ALLOWED_MIME_TYPES = new Set([
-  "application/pdf",
-  "image/png",
-  "image/jpeg",
-  "image/webp",
-]);
-const MAX_FILE_BYTES = 10 * 1024 * 1024; // Gemini inline data caps at 20MB
 
 export async function POST(request: Request) {
   const session = await getSession();
@@ -49,66 +39,20 @@ export async function POST(request: Request) {
     return Response.json({ error: "file exceeds 10MB" }, { status: 413 });
   }
 
-  const bytes = Buffer.from(await file.arrayBuffer());
-
-  const invoice = await prisma.$transaction(async (tx) => {
-    const created = await tx.invoice.create({
-      data: {
-        source: "UPLOAD",
-        fileName: file.name,
-        mimeType: file.type,
-        storagePath: "", // set right after the id exists
-      },
-    });
-    await tx.auditLog.create({
-      data: {
-        invoiceId: created.id,
-        actor: "SYSTEM",
-        action: "INVOICE_RECEIVED",
-        toStatus: "RECEIVED",
-        reason: `Uploaded via API (${file.name}, ${file.size} bytes)`,
-      },
-    });
-    return created;
-  });
-
-  const storagePath = await saveInvoiceFile(invoice.id, file.name, bytes);
-  await prisma.invoice.update({
-    where: { id: invoice.id },
-    data: { storagePath },
-  });
-
-  // Hand off to n8n. Fire-and-record: n8n acknowledges immediately and
-  // processes async; the extraction result arrives later via
-  // /api/internal/invoices/[id]/extraction.
-  let handoffOk = false;
-  let handoffDetail: string;
-  try {
-    const res = await fetch(`${process.env.N8N_WEBHOOK_URL}/invoice-extraction`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ invoiceId: invoice.id }),
-    });
-    handoffOk = res.ok;
-    handoffDetail = `n8n webhook responded ${res.status}`;
-  } catch (error) {
-    handoffDetail = `n8n unreachable: ${error instanceof Error ? error.message : String(error)}`;
-  }
-
-  const updated = await transitionInvoice({
-    invoiceId: invoice.id,
-    to: handoffOk ? "EXTRACTING" : "FAILED",
-    actor: "SYSTEM",
-    action: handoffOk ? "EXTRACTION_STARTED" : "HANDOFF_FAILED",
-    reason: handoffDetail,
+  const invoice = await createAndDispatchInvoice({
+    source: "UPLOAD",
+    fileName: file.name,
+    mimeType: file.type,
+    bytes: Buffer.from(await file.arrayBuffer()),
+    receivedVia: `Uploaded via dashboard by ${session.email} (${file.name}, ${file.size} bytes)`,
   });
 
   return Response.json(
     {
-      id: updated.id,
-      status: updated.status,
-      fileName: updated.fileName,
-      createdAt: updated.createdAt,
+      id: invoice.id,
+      status: invoice.status,
+      fileName: invoice.fileName,
+      createdAt: invoice.createdAt,
     },
     { status: 201 },
   );
