@@ -122,6 +122,31 @@ pgvector column and compares new invoices by cosine similarity.
   to the lighter `gemini-2.5-flash-lite` model. Automatic retries are
   Phase 6's job.
 
+### Phase 4 — Dashboard, auth, and the human half of HITL
+
+**What was built:** the login-protected Next.js dashboard (stats, invoice
+list with filters, detail page with PDF preview + audit timeline), session
+auth per the official Next 16 pattern (jose-signed JWT in an httpOnly
+cookie), and the approve/reject endpoints that record HUMAN transitions.
+
+**What you learned:**
+
+- **Stateless sessions:** sign a JWT with `SESSION_SECRET`, store it in an
+  httpOnly cookie (JS can never read it), verify on every request. Next 16
+  renamed middleware → `proxy.ts`, and the docs are explicit that proxy is
+  only the *optimistic* redirect — real verification lives in the layout
+  and in every API handler (defense in depth).
+- **Two kinds of auth in one app:** humans get sessions; the n8n service
+  keeps its `x-internal-api-key`. Different callers, different mechanisms.
+- **Humans and AI share one state machine:** APPROVED_BY_HUMAN goes through
+  the same `transitionInvoice` as AUTO_APPROVED — one audit trail answers
+  "who approved this?" regardless of actor. Rejections *require* a reason.
+- **Login responses never reveal** whether the email or the password was
+  wrong (account enumeration), and bcrypt hashes are compared, never
+  passwords.
+- Verified live: unauthenticated page → 307 to /login, unauthenticated API
+  → 401, double-approval → 409 from the transition guard.
+
 ---
 
 ## Part 2 — Glossary

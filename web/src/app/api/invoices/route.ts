@@ -7,6 +7,7 @@
 // retryable invoice instead of a silently lost file.
 import { prisma } from "@/lib/db";
 import { transitionInvoice } from "@/lib/invoices";
+import { getSession } from "@/lib/session";
 import { saveInvoiceFile } from "@/lib/storage";
 
 const ALLOWED_MIME_TYPES = new Set([
@@ -18,6 +19,9 @@ const ALLOWED_MIME_TYPES = new Set([
 const MAX_FILE_BYTES = 10 * 1024 * 1024; // Gemini inline data caps at 20MB
 
 export async function POST(request: Request) {
+  const session = await getSession();
+  if (!session) return Response.json({ error: "unauthorized" }, { status: 401 });
+
   let form: FormData;
   try {
     form = await request.formData();
@@ -111,6 +115,9 @@ export async function POST(request: Request) {
 }
 
 export async function GET() {
+  const session = await getSession();
+  if (!session) return Response.json({ error: "unauthorized" }, { status: 401 });
+
   const invoices = await prisma.invoice.findMany({
     orderBy: { createdAt: "desc" },
     take: 50,

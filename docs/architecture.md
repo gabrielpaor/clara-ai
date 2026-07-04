@@ -77,8 +77,8 @@ Every transition is written to an `audit_log` table with actor
 | 1 ✅ | Prisma schema + Next.js scaffold (auth moved to dashboard phase) | Data modeling, state machines |
 | 2 ✅ | Upload → webhook → LLM extraction pipeline (Gemini free tier) | Webhooks, prompt engineering, structured outputs |
 | 3 ✅ | Auto-approval rules engine + near-duplicate detection (pgvector) | Business rules, embeddings, unit testing |
-| 4 | Gmail ingestion + notification emails | OAuth, email automation |
-| 5 | Human approval queue + resume-on-approve | HITL patterns, n8n Wait nodes |
+| 4 ✅ | Dashboard + session auth + human approval queue (HITL complete) | Stateless sessions, route protection, human transitions |
+| 5 | Gmail ingestion + notification emails | OAuth, email automation |
 | 6 | Error workflows, retries, audit log, monitoring dashboard | Production reliability |
 | 7 | Deployment (Railway/Vercel), README polish, demo | DevOps, storytelling |
 

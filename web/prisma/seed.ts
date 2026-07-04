@@ -1,6 +1,7 @@
 // Seed data for local development: three known vendors so the extraction
 // pipeline has master data to match against. Run with: npx prisma db seed
 import "dotenv/config";
+import bcrypt from "bcryptjs";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
 
@@ -38,8 +39,23 @@ async function main() {
     });
   }
 
+  // Dashboard login for local development. CHANGE THE PASSWORD before any
+  // non-local deployment — or better, replace with your own user row.
+  const adminEmail = "admin@clara.local";
+  await prisma.user.upsert({
+    where: { email: adminEmail },
+    update: {},
+    create: {
+      email: adminEmail,
+      name: "Gabriel",
+      role: "ADMIN",
+      passwordHash: await bcrypt.hash("clara-admin-2026", 12),
+    },
+  });
+
   const count = await prisma.vendor.count();
   console.log(`Seed complete — ${count} vendors in database.`);
+  console.log(`Dashboard login: ${adminEmail} / clara-admin-2026`);
 }
 
 main()
