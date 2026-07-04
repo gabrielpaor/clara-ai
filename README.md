@@ -1,49 +1,124 @@
-# Clara — AI Accounts-Payable Employee
+# Clara — an AI Accounts-Payable Employee
 
-An AI automation system that processes vendor invoices end-to-end: it receives
-invoices by email or dashboard upload, reads them with OCR + LLM extraction,
-validates them against business rules, flags duplicates and anomalies, routes
-uncertain cases to a human approval queue, and keeps a full audit trail — like
-a junior AP clerk that never sleeps.
+Clara is an AI automation system that does the job of a junior AP clerk:
+she watches an inbox, reads invoice PDFs with LLM vision, validates them
+against business rules and vendor master data, catches duplicate and
+near-duplicate billing, **auto-approves only what she's confident about**,
+and escalates everything else to a human review queue — with a complete,
+append-only audit trail of every decision, human or AI.
 
-> **Status:** Phase 0 — infrastructure. See [docs/architecture.md](docs/architecture.md)
-> for the full design and phase roadmap.
+Built as a production-grade portfolio project: not a chatbot, an **AI
+employee with a paper trail**.
 
-## Why this project exists
+```mermaid
+flowchart LR
+    subgraph Intake
+        E[📧 Vendor email<br/>Gmail trigger] --> N
+        U[🖥️ Dashboard upload] --> A
+    end
+    subgraph n8n["n8n (automation engine)"]
+        N[Ingestion workflow<br/>allowlist-checked] --> A
+        A2[Extraction workflow] -->|Gemini vision<br/>structured JSON| A2
+        A2 -->|embedding| A2
+        ERR[Error workflow] -.->|any crash| API
+        SW[Sweeper<br/>every 15 min] -.->|requeue stuck| API
+    end
+    A[Next.js API] -->|webhook| A2
+    A2 -->|validated callback| API[Decision layer]
+    API -->|"confident + small + clean"| OK[✅ Auto-approved]
+    API -->|"anything doubtful"| REV[👤 Human review queue]
+    API --> DB[(PostgreSQL<br/>+ pgvector)]
+    REV --> DASH[Dashboard:<br/>approve / reject / retry]
+    API -->|review & failure alerts| MAIL[📨 Notification emails]
+```
 
-Portfolio project demonstrating production-grade AI automation engineering:
-LLM orchestration with structured outputs, human-in-the-loop workflows,
-retry/error handling, and observability — not another chatbot.
+## What it demonstrates
+
+| Feature | Production concept |
+| --- | --- |
+| Gemini vision reads PDFs into schema-enforced JSON, re-validated with Zod | Structured outputs — transport *and* business validation |
+| Prompt engineered for "null over guess", ambiguity escape hatches, calibrated confidence | Hallucination mitigation |
+| Auto-approval only when confidence ≥ threshold, amount ≤ limit, vendor known, zero flags | Confidence-based routing (the heart of HITL) |
+| DB unique constraint **plus** pgvector cosine similarity on canonical-text embeddings | Duplicate defense in depth (exact + near-duplicate) |
+| Invoice status is a strict state machine; every transition writes an audit row in the same transaction | Governable AI, compliance-ready audit trail |
+| Humans approve/reject/retry through the *same* audited state machine as the AI | Human-in-the-loop, symmetrical by design |
+| App fires webhook, returns instantly; results arrive on authenticated callbacks | Async orchestration — users never wait on an LLM |
+| Node-level retries, human retry path, global error workflow, stuck-job sweeper | Reliability engineering (designed from real Gemini 503 outages) |
+| Every run recorded with n8n execution id; dashboard health panel | Observability |
+| Session auth (jose JWT, httpOnly) for humans, shared-secret header for services, sender allowlist for the inbox | Layered security |
 
 ## Stack
 
-| Layer      | Technology                                   |
-| ---------- | -------------------------------------------- |
-| Frontend   | Next.js (App Router), TypeScript, Tailwind, shadcn/ui |
-| Automation | n8n (self-hosted, Docker)                    |
-| Database   | PostgreSQL 16 + pgvector, Prisma             |
-| AI         | OpenAI API (structured outputs, embeddings)  |
-| Infra      | Docker Compose                               |
+**Next.js 16** (App Router, TypeScript) · **n8n** (self-hosted, workflows
+version-controlled as JSON) · **PostgreSQL 16 + pgvector** · **Prisma 7** ·
+**Google Gemini** (vision extraction + embeddings — free tier) · **Gmail
+API** (ingestion + notifications) · **Docker Compose** · Tailwind · Zod ·
+Vitest
+
+Total build cost: **$0** (self-hosted n8n, Gemini free tier).
 
 ## Quick start
 
 ```bash
-cp .env.example .env   # then fill in real values
-docker compose up -d
+git clone https://github.com/gabrielpaor/clara-ai && cd clara-ai
+cp .env.example .env                  # fill in values
+docker compose up -d                  # n8n + Postgres (pgvector)
+
+cd web
+cp .env.example .env                  # fill in values
+npm install
+npx prisma migrate dev && npx prisma db seed
+npm run dev                           # dashboard on :3000
+
+# import + activate all n8n workflows (from repo root)
+./scripts/import-workflows.sh         # or scripts\import-workflows.ps1
 ```
 
-| Service   | URL                    |
-| --------- | ---------------------- |
-| n8n       | http://localhost:5678  |
-| Postgres  | localhost:5432         |
-| Dashboard | http://localhost:3000 (Phase 1+) |
+Then in n8n (localhost:5678): add your Gemini API key to the
+**Google Gemini API Key** credential, connect **Clara Gmail** (OAuth —
+see [docs/deployment.md](docs/deployment.md#gmail-oauth)), and upload a
+PDF from [samples/](samples/) on the dashboard (login is printed by the
+seed script — change it immediately for any non-local use).
 
-## Repository layout
+## Repository tour
 
 ```
-├─ docker-compose.yml     # n8n + Postgres (pgvector)
-├─ docker/postgres/       # DB init scripts
-├─ n8n/workflows/         # exported n8n workflow JSON (version-controlled)
-├─ web/                   # Next.js dashboard (Phase 1+)
-└─ docs/                  # architecture, decisions, runbooks
+├─ docker-compose.yml          # n8n + Postgres/pgvector infrastructure
+├─ n8n/
+│  ├─ workflows/               # 5 workflows as version-controlled JSON
+│  └─ prompts/                 # extraction prompt + design rationale
+├─ web/
+│  ├─ prisma/schema.prisma     # Invoice state machine, audit log, vendors
+│  └─ src/
+│     ├─ app/api/              # public, session-guarded + internal endpoints
+│     ├─ app/(dashboard)/      # review queue, detail w/ audit timeline, health
+│     └─ lib/                  # state machine, rules engine, dispatch, auth
+├─ docs/
+│  ├─ architecture.md          # full design: diagrams, decisions, lifecycle
+│  ├─ deployment.md            # production topology + security checklist
+│  ├─ demo-script.md           # 5-minute walkthrough
+│  └─ learning-notes.md        # concepts + war stories from the build
+└─ samples/                    # generated test invoices (3 vendors, 2 currencies)
 ```
+
+## Documentation
+
+- **[Architecture](docs/architecture.md)** — system design, key decisions
+  with alternatives considered, invoice lifecycle state machine
+- **[Deployment](docs/deployment.md)** — production topology, free-tier
+  reality check, security hardening checklist
+- **[Demo script](docs/demo-script.md)** — the 5-minute tour
+- **[Learning notes](docs/learning-notes.md)** — every concept in the
+  build, plus the war stories (503 outages, binary-data stubs, Prisma
+  shadow-database traps) and how they were debugged
+
+## Honest limitations & next steps
+
+- File storage is local disk behind a narrow interface
+  ([storage.ts](web/src/lib/storage.ts)) — swapping in S3/R2 is the one
+  code change needed for serverless deployment (see deployment guide).
+- Vendor matching is exact-name; fuzzy matching (pg_trgm or embeddings)
+  is the natural next iteration.
+- Line-item extraction, multi-page invoices, PO matching, and payment
+  scheduling (`APPROVED → SCHEDULED → PAID` is modeled but unautomated)
+  are deliberate scope cuts — the lifecycle supports them.

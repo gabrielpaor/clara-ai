@@ -80,7 +80,7 @@ Every transition is written to an `audit_log` table with actor
 | 4 ✅ | Dashboard + session auth + human approval queue (HITL complete) | Stateless sessions, route protection, human transitions |
 | 5 ✅ | Email ingestion (allowlist, message dedup) + notification emails | OAuth, email automation, intake refactor |
 | 6 ✅ | Retries with backoff, human retry, error workflow, stuck-job sweeper, health panel | Production reliability |
-| 7 | Deployment (Railway/Vercel), README polish, demo | DevOps, storytelling |
+| 7 ✅ | Presentation: README, deployment guide, demo script, import scripts | DevOps, storytelling |
 
 ## 6. Cost profile (learning budget)
 

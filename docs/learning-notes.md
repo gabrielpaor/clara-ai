@@ -205,6 +205,28 @@ frees invoices stuck in EXTRACTING; and a dashboard health panel
   503s, a dead workflow, a stuck invoice) — reliability features earn
   their place from failures you've actually seen.
 
+### Phase 7 — Presentation & deployment readiness
+
+**What was built:** the recruiter-facing README (Mermaid architecture
+diagram, features-to-concepts table, quickstart), a production deployment
+guide with an honest free-tier reality check and security checklist, a
+5-minute demo script, and one-command workflow import scripts.
+
+**What you learned:**
+
+- **A portfolio project is judged by its README** before anyone reads a
+  line of code. Lead with what it does and what it demonstrates; map
+  features to the production concepts they prove.
+- **Honest limitations impress more than fake completeness** — "storage
+  is local disk behind a narrow interface; here's the one change for
+  serverless" reads as senior judgment, not weakness.
+- **Free-tier reality:** dashboards and databases host free forever
+  (Vercel, Neon); an always-on poller like n8n fundamentally cannot
+  (sleeping free tiers kill it) — knowing *why* is the interview answer.
+- **Reproducibility is a feature:** clone → compose up → migrate → one
+  import script → running system. If a stranger can't run it, it isn't
+  done.
+
 ---
 
 ## Part 2 — Glossary
