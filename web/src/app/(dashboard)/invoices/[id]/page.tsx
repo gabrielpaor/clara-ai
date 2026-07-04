@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ReviewActions } from "@/components/review-actions";
+import { RetryButton } from "@/components/retry-button";
 import { StatusBadge } from "@/components/status-badge";
 import { prisma } from "@/lib/db";
 import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
@@ -56,6 +57,7 @@ export default async function InvoiceDetailPage({
           </p>
         </div>
         {invoice.status === "NEEDS_REVIEW" && <ReviewActions invoiceId={invoice.id} />}
+        {invoice.status === "FAILED" && <RetryButton invoiceId={invoice.id} />}
       </div>
 
       {invoice.flags.length > 0 && (

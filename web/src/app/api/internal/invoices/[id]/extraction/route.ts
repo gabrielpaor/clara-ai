@@ -118,6 +118,19 @@ export async function POST(
   }
   const report = parsed.data;
 
+  // Observability: one WorkflowRun row per extraction outcome, linked to
+  // n8n's execution id so the health panel can point at the exact run.
+  await prisma.workflowRun.create({
+    data: {
+      workflowName: "invoice-extraction",
+      n8nExecutionId: report.n8nExecutionId,
+      invoiceId: id,
+      status: report.outcome === "success" ? "SUCCESS" : "FAILED",
+      error: report.outcome === "failure" ? report.error.slice(0, 1000) : null,
+      finishedAt: new Date(),
+    },
+  });
+
   if (report.outcome === "failure") {
     await transitionInvoice({
       invoiceId: id,

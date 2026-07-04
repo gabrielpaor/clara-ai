@@ -4,19 +4,45 @@ import { UploadInvoice } from "@/components/upload-invoice";
 import { prisma } from "@/lib/db";
 import { formatDateTime, formatMoney } from "@/lib/format";
 
+const HEALTH_WINDOW_DAYS = 7;
+
+// Outside the component: the React Compiler (correctly) refuses impure
+// calls like Date.now() in a component body.
+function healthWindowStart(): Date {
+  return new Date(Date.now() - HEALTH_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+}
+
 export default async function DashboardPage() {
-  const [byStatus, approvedSum, recent] = await Promise.all([
-    prisma.invoice.groupBy({ by: ["status"], _count: { _all: true } }),
-    prisma.invoice.aggregate({
-      _sum: { total: true },
-      where: { status: { in: ["APPROVED", "SCHEDULED", "PAID"] } },
-    }),
-    prisma.invoice.findMany({
-      orderBy: { createdAt: "desc" },
-      take: 8,
-      include: { vendor: { select: { name: true } } },
-    }),
-  ]);
+  const healthSince = healthWindowStart();
+  const [byStatus, approvedSum, recent, runsByStatus, recentFailures] =
+    await Promise.all([
+      prisma.invoice.groupBy({ by: ["status"], _count: { _all: true } }),
+      prisma.invoice.aggregate({
+        _sum: { total: true },
+        where: { status: { in: ["APPROVED", "SCHEDULED", "PAID"] } },
+      }),
+      prisma.invoice.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 8,
+        include: { vendor: { select: { name: true } } },
+      }),
+      prisma.workflowRun.groupBy({
+        by: ["status"],
+        _count: { _all: true },
+        where: { startedAt: { gte: healthSince } },
+      }),
+      prisma.workflowRun.findMany({
+        where: { status: "FAILED", startedAt: { gte: healthSince } },
+        orderBy: { startedAt: "desc" },
+        take: 5,
+      }),
+    ]);
+
+  const runCount = (status: string) =>
+    runsByStatus.find((r) => r.status === status)?._count._all ?? 0;
+  const totalRuns = runCount("SUCCESS") + runCount("FAILED");
+  const successRate =
+    totalRuns === 0 ? null : Math.round((runCount("SUCCESS") / totalRuns) * 100);
 
   const count = (status: string) =>
     byStatus.find((s) => s.status === status)?._count._all ?? 0;
@@ -57,6 +83,54 @@ export default async function DashboardPage() {
           </div>
         ))}
       </div>
+
+      <section>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="font-medium text-zinc-900">Automation health</h2>
+          <span className="text-sm text-zinc-500">last {HEALTH_WINDOW_DAYS} days</span>
+        </div>
+        <div className="grid gap-4 md:grid-cols-3">
+          <div className="rounded-xl border border-zinc-200 bg-white p-4">
+            <p className="text-sm text-zinc-500">Extraction success rate</p>
+            <p
+              className={`mt-1 text-2xl font-semibold ${
+                successRate === null
+                  ? "text-zinc-400"
+                  : successRate >= 90
+                    ? "text-green-600"
+                    : "text-amber-600"
+              }`}
+            >
+              {successRate === null ? "—" : `${successRate}%`}
+            </p>
+            <p className="text-xs text-zinc-400">
+              {runCount("SUCCESS")} ok · {runCount("FAILED")} failed
+            </p>
+          </div>
+          <div className="rounded-xl border border-zinc-200 bg-white p-4 md:col-span-2">
+            <p className="mb-2 text-sm text-zinc-500">Recent workflow failures</p>
+            {recentFailures.length === 0 ? (
+              <p className="text-sm text-zinc-400">
+                No failures in the last {HEALTH_WINDOW_DAYS} days.
+              </p>
+            ) : (
+              <ul className="space-y-1.5">
+                {recentFailures.map((run) => (
+                  <li key={run.id} className="text-sm">
+                    <span className="font-medium text-zinc-900">
+                      {run.workflowName}
+                    </span>
+                    <span className="text-zinc-400"> · {formatDateTime(run.startedAt)} · </span>
+                    <span className="text-red-600">
+                      {(run.error ?? "unknown error").slice(0, 90)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      </section>
 
       <section>
         <div className="mb-3 flex items-center justify-between">

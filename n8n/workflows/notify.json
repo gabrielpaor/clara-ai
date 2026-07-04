@@ -1,8 +1,8 @@
 {
   "id": "ClaraNotify00001",
   "name": "Clara — Notifications",
-  "active": false,
-  "settings": { "executionOrder": "v1" },
+  "active": true,
+  "settings": { "executionOrder": "v1", "errorWorkflow": "ClaraErrorHandlr" },
   "nodes": [
     {
       "id": "node-notify-webhook",

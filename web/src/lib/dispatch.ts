@@ -53,30 +53,37 @@ export async function createAndDispatchInvoice(input: IntakeInput) {
     data: { storagePath },
   });
 
-  let handoffOk = false;
-  let handoffDetail: string;
+  const handoff = await fireExtractionWebhook(invoice.id);
+
+  return transitionInvoice({
+    invoiceId: invoice.id,
+    to: handoff.ok ? "EXTRACTING" : "FAILED",
+    actor: "SYSTEM",
+    action: handoff.ok ? "EXTRACTION_STARTED" : "HANDOFF_FAILED",
+    reason: handoff.detail,
+  });
+}
+
+/** Fires the n8n extraction webhook. Shared by first intake and retries. */
+export async function fireExtractionWebhook(
+  invoiceId: string,
+): Promise<{ ok: boolean; detail: string }> {
   try {
     const res = await fetch(
       `${process.env.N8N_WEBHOOK_URL}/invoice-extraction`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ invoiceId: invoice.id }),
+        body: JSON.stringify({ invoiceId }),
       },
     );
-    handoffOk = res.ok;
-    handoffDetail = `n8n webhook responded ${res.status}`;
+    return { ok: res.ok, detail: `n8n webhook responded ${res.status}` };
   } catch (error) {
-    handoffDetail = `n8n unreachable: ${error instanceof Error ? error.message : String(error)}`;
+    return {
+      ok: false,
+      detail: `n8n unreachable: ${error instanceof Error ? error.message : String(error)}`,
+    };
   }
-
-  return transitionInvoice({
-    invoiceId: invoice.id,
-    to: handoffOk ? "EXTRACTING" : "FAILED",
-    actor: "SYSTEM",
-    action: handoffOk ? "EXTRACTION_STARTED" : "HANDOFF_FAILED",
-    reason: handoffDetail,
-  });
 }
 
 export const ALLOWED_MIME_TYPES = new Set([

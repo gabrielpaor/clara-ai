@@ -13,6 +13,26 @@ export interface InvoiceNotification {
   reason: string;
 }
 
+/** Generic operational alert (workflow crash, stuck jobs). Same
+ * fire-and-forget contract as invoice notifications. */
+export function notifySystemAlert(subject: string, html: string): void {
+  const notifyTo = process.env.ADMIN_NOTIFY_EMAIL;
+  if (!notifyTo) return;
+  void fetch(`${process.env.N8N_WEBHOOK_URL}/notify`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ notifyTo, subject: `[Clara] ${subject}`, html }),
+  })
+    .then((res) => {
+      if (!res.ok) console.warn(`notify: n8n notify webhook returned ${res.status}`);
+    })
+    .catch((error) => {
+      console.warn(
+        `notify: could not reach n8n notify webhook (${error instanceof Error ? error.message : error})`,
+      );
+    });
+}
+
 export function notifyInvoiceOutcome(n: InvoiceNotification): void {
   const notifyTo = process.env.ADMIN_NOTIFY_EMAIL;
   if (!notifyTo) return; // notifications are optional configuration

@@ -175,6 +175,36 @@ review/failure notification emails via a small n8n notify workflow.
   fresh shadow DB, which doesn't run docker init scripts — so `CREATE
   EXTENSION vector` had to become a (backdated) migration itself.
 
+### Phase 6 — Reliability
+
+**What was built:** node-level retries (3 tries, 5s apart) on every
+external call in the workflows; a human Retry button/endpoint for FAILED
+invoices; an n8n Error Workflow that reports any workflow crash to the app
+(WorkflowRun record + alert email); a scheduled sweeper that fails-and-
+frees invoices stuck in EXTRACTING; and a dashboard health panel
+(success rate + recent failures).
+
+**What you learned:**
+
+- **Retry taxonomy:** transient faults (503s) are retried *automatically
+  at the node level*; permanent-looking failures land in FAILED where a
+  *human* decides to retry — one click, fully audited (RETRY_REQUESTED →
+  the same pipeline). The state machine allowed FAILED → EXTRACTING since
+  Phase 1, designed for exactly this.
+- **Every async job needs a timeout owner.** "The callback will come" is
+  not a guarantee — n8n can die mid-run. The sweeper turns invisible
+  stuck jobs into visible, retryable failures within 15 minutes.
+- **Error workflows:** n8n's global catch-all trigger. One workflow
+  receives every crash, so alerting is written once, not per workflow.
+  Loop guard: crashes OF the notification workflow are recorded but not
+  emailed (a broken notifier must not page itself forever).
+- **Observability closes the loop:** every extraction outcome writes a
+  WorkflowRun row carrying n8n's execution id — the health panel can
+  point at the exact node-by-node trace for any failure.
+- Meta-lesson: this phase was designed from real incidents (three Gemini
+  503s, a dead workflow, a stuck invoice) — reliability features earn
+  their place from failures you've actually seen.
+
 ---
 
 ## Part 2 — Glossary

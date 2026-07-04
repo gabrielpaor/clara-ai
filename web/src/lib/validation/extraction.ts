@@ -35,10 +35,13 @@ export const extractionReportSchema = z.discriminatedUnion("outcome", [
     // 768-dim embedding of the canonical invoice text, computed in n8n.
     // Nullable: an embedding failure should not sink the whole extraction.
     embedding: z.array(z.number()).length(768).nullable().optional(),
+    // n8n execution id — links the WorkflowRun record to n8n's own log.
+    n8nExecutionId: z.string().optional(),
   }),
   z.object({
     outcome: z.literal("failure"),
     error: z.string().min(1),
+    n8nExecutionId: z.string().optional(),
   }),
 ]);
 

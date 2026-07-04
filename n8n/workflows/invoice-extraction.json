@@ -2,7 +2,7 @@
   "id": "ClaraInvoiceExtr",
   "name": "Clara — Invoice Extraction",
   "active": true,
-  "settings": { "executionOrder": "v1" },
+  "settings": { "executionOrder": "v1", "errorWorkflow": "ClaraErrorHandlr" },
   "nodes": [
     {
       "id": "node-webhook-trigger",
@@ -52,6 +52,9 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [660, 0],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
       "onError": "continueErrorOutput",
       "parameters": {
         "method": "POST",
@@ -77,7 +80,7 @@
       "typeVersion": 2,
       "position": [880, -100],
       "parameters": {
-        "jsCode": "// Unwraps Gemini's response envelope into our internal report shape.\nconst response = $input.item.json;\nconst candidate = response.candidates?.[0];\nconst text = candidate?.content?.parts?.[0]?.text;\nif (!text) {\n  throw new Error(`Gemini returned no text (finishReason: ${candidate?.finishReason ?? 'unknown'})`);\n}\nconst parsed = JSON.parse(text);\nconst { confidence, warnings, ...fields } = parsed;\nreturn [{ json: { outcome: 'success', data: fields, confidence, warnings: warnings ?? [] } }];"
+        "jsCode": "// Unwraps Gemini's response envelope into our internal report shape.\nconst response = $input.item.json;\nconst candidate = response.candidates?.[0];\nconst text = candidate?.content?.parts?.[0]?.text;\nif (!text) {\n  throw new Error(`Gemini returned no text (finishReason: ${candidate?.finishReason ?? 'unknown'})`);\n}\nconst parsed = JSON.parse(text);\nconst { confidence, warnings, ...fields } = parsed;\nreturn [{ json: { outcome: 'success', data: fields, confidence, warnings: warnings ?? [], n8nExecutionId: $execution.id } }];"
       }
     },
     {
@@ -96,6 +99,9 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [1320, -100],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
       "onError": "continueRegularOutput",
       "parameters": {
         "method": "POST",
@@ -131,7 +137,7 @@
       "typeVersion": 2,
       "position": [880, 120],
       "parameters": {
-        "jsCode": "// The Gemini call errored (auth, rate limit, network). Convert the error\n// into a failure report so the app can mark the invoice FAILED instead of\n// leaving it stuck in EXTRACTING forever.\nconst item = $input.item.json;\nconst message =\n  item.error?.message ??\n  item.error?.description ??\n  (typeof item.error === 'string' ? item.error : JSON.stringify(item).slice(0, 800));\nreturn [{ json: { outcome: 'failure', error: `Gemini request failed: ${message}` } }];"
+        "jsCode": "// The Gemini call errored (auth, rate limit, network). Convert the error\n// into a failure report so the app can mark the invoice FAILED instead of\n// leaving it stuck in EXTRACTING forever.\nconst item = $input.item.json;\nconst message =\n  item.error?.message ??\n  item.error?.description ??\n  (typeof item.error === 'string' ? item.error : JSON.stringify(item).slice(0, 800));\nreturn [{ json: { outcome: 'failure', error: `Gemini request failed: ${message}`, n8nExecutionId: $execution.id } }];"
       }
     },
     {
@@ -140,6 +146,9 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [1760, 0],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
       "parameters": {
         "method": "POST",
         "url": "=http://host.docker.internal:3000/api/internal/invoices/{{ $('Webhook').item.json.body.invoiceId }}/extraction",

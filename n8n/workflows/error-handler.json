@@ -1,0 +1,64 @@
+{
+  "id": "ClaraErrorHandlr",
+  "name": "Clara — Error Handler",
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "nodes": [
+    {
+      "id": "node-error-trigger",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [0, 0],
+      "parameters": {}
+    },
+    {
+      "id": "node-shape-report",
+      "name": "Shape error report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 0],
+      "parameters": {
+        "jsCode": "// The Error Trigger receives the failed execution's metadata. Reshape it\n// into the app's error-report contract.\nconst e = $input.item.json;\nreturn [{\n  json: {\n    workflowName: e.workflow?.name ?? 'unknown workflow',\n    executionId: e.execution?.id != null ? String(e.execution.id) : undefined,\n    error: e.execution?.error?.message ?? 'unknown error',\n    lastNode: e.execution?.lastNodeExecuted ?? undefined\n  }\n}];"
+      }
+    },
+    {
+      "id": "node-report-error",
+      "name": "Report to app",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 0],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:3000/api/internal/runs/error",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ClaraInternalKey",
+          "name": "Clara Internal API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [{ "node": "Shape error report", "type": "main", "index": 0 }]
+      ]
+    },
+    "Shape error report": {
+      "main": [
+        [{ "node": "Report to app", "type": "main", "index": 0 }]
+      ]
+    }
+  }
+}
