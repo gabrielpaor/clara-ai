@@ -69,8 +69,8 @@ export default async function InvoiceDetailPage({
         </div>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="space-y-6">
+      <div className="grid gap-6 lg:grid-cols-5">
+        <div className="space-y-6 lg:col-span-2">
           <ExtractedFields
             invoiceId={invoice.id}
             editable={invoice.status === "NEEDS_REVIEW"}
@@ -110,12 +110,25 @@ export default async function InvoiceDetailPage({
           </section>
         </div>
 
-        <section className="rounded-xl border border-zinc-200 bg-white p-2">
-          <iframe
-            src={`/api/invoices/${invoice.id}/file`}
-            title="Invoice document"
-            className="h-[720px] w-full rounded-lg"
-          />
+        <section className="rounded-xl border border-zinc-200 bg-white p-3 lg:col-span-3 lg:sticky lg:top-6 lg:self-start">
+          <div className="flex items-center justify-between px-1 pb-3">
+            <h2 className="font-medium text-zinc-900">Document</h2>
+            <a
+              href={`/api/invoices/${invoice.id}/file`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-zinc-500 hover:text-zinc-900 hover:underline"
+            >
+              Open in new tab ↗
+            </a>
+          </div>
+          <div className="overflow-hidden rounded-lg bg-zinc-100">
+            <iframe
+              src={`/api/invoices/${invoice.id}/file`}
+              title="Invoice document"
+              className="h-[70vh] min-h-[560px] w-full bg-white lg:h-[calc(100vh-11rem)]"
+            />
+          </div>
         </section>
       </div>
     </div>

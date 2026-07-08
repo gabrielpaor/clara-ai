@@ -90,7 +90,9 @@ export default async function InvoicesPage({
                   </Link>
                 </td>
                 <td className="px-4 py-3 text-zinc-600">{inv.invoiceNumber ?? "—"}</td>
-                <td className="px-4 py-3">{formatMoney(inv.total?.toString() ?? null, inv.currency)}</td>
+                <td className="px-4 py-3 font-medium text-zinc-900">
+                  {formatMoney(inv.total?.toString() ?? null, inv.currency)}
+                </td>
                 <td className="px-4 py-3 text-zinc-600">
                   {inv.confidence !== null ? `${Math.round(inv.confidence * 100)}%` : "—"}
                 </td>

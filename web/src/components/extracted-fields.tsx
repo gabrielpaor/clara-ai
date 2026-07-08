@@ -134,7 +134,7 @@ export function ExtractedFields({
                     setValues((v) => ({ ...v, [key]: e.target.value }))
                   }
                   placeholder="—"
-                  className="mt-1 w-full rounded-lg border border-zinc-300 px-2.5 py-1.5 text-sm focus:border-zinc-500 focus:outline-none"
+                  className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-2.5 py-1.5 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-500 focus:outline-none"
                 />
               </label>
             ))}
