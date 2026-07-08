@@ -221,12 +221,13 @@ flag and sets vendorId (currently impossible without SQL). *DB:*
 `duplicateOfId` column instead of burying it in audit metadata. *n8n:*
 none. *Frontend:* side-by-side compare view. *Difficulty:* medium.
 
-**Cost monitoring** — *Why:* LLM spend is the first thing finance asks
-about the AI that processes finance. *Architecture:* token counts from
-Gemini's `usageMetadata` flow through the report payload into
-`WorkflowRun`; health panel aggregates $/day and $/invoice.
-*DB:* 3 columns on WorkflowRun. *n8n:* pass-through fields. *Frontend:*
-one chart. *Difficulty:* easy — highest value-to-effort in this list.
+✅ **Cost monitoring** *(shipped)* — *Why:* LLM spend is the first thing
+finance asks about the AI that processes finance. *As built:* token
+counts from Gemini's `usageMetadata` flow through the report payload
+into `WorkflowRun` (promptTokens/outputTokens/costUsd, priced at write
+time via env-configured rates in `lib/cost.ts` — labeled "paid-tier
+estimate" since the free tier bills $0); the health panel shows 7-day
+spend, total tokens, and $/invoice. First real number: ~$0.0001/invoice.
 
 | Feature | Why companies need it | Difficulty |
 | --- | --- | --- |

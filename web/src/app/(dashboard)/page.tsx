@@ -14,7 +14,7 @@ function healthWindowStart(): Date {
 
 export default async function DashboardPage() {
   const healthSince = healthWindowStart();
-  const [byStatus, approvedSum, recent, runsByStatus, recentFailures] =
+  const [byStatus, approvedSum, recent, runsByStatus, recentFailures, costAgg] =
     await Promise.all([
       prisma.invoice.groupBy({ by: ["status"], _count: { _all: true } }),
       prisma.invoice.aggregate({
@@ -36,6 +36,15 @@ export default async function DashboardPage() {
         orderBy: { startedAt: "desc" },
         take: 5,
       }),
+      prisma.workflowRun.aggregate({
+        where: {
+          workflowName: "invoice-extraction",
+          startedAt: { gte: healthSince },
+          costUsd: { not: null },
+        },
+        _sum: { costUsd: true, promptTokens: true, outputTokens: true },
+        _count: { costUsd: true },
+      }),
     ]);
 
   const runCount = (status: string) =>
@@ -43,6 +52,11 @@ export default async function DashboardPage() {
   const totalRuns = runCount("SUCCESS") + runCount("FAILED");
   const successRate =
     totalRuns === 0 ? null : Math.round((runCount("SUCCESS") / totalRuns) * 100);
+
+  const costedRuns = costAgg._count.costUsd;
+  const totalCost = costAgg._sum.costUsd ? Number(costAgg._sum.costUsd.toString()) : 0;
+  const totalTokens =
+    (costAgg._sum.promptTokens ?? 0) + (costAgg._sum.outputTokens ?? 0);
 
   const count = (status: string) =>
     byStatus.find((s) => s.status === status)?._count._all ?? 0;
@@ -89,7 +103,18 @@ export default async function DashboardPage() {
           <h2 className="font-medium text-zinc-900">Automation health</h2>
           <span className="text-sm text-zinc-500">last {HEALTH_WINDOW_DAYS} days</span>
         </div>
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-4">
+          <div className="rounded-xl border border-zinc-200 bg-white p-4">
+            <p className="text-sm text-zinc-500">LLM cost (est.)</p>
+            <p className="mt-1 text-2xl font-semibold text-zinc-900">
+              {costedRuns === 0 ? "—" : `$${totalCost.toFixed(4)}`}
+            </p>
+            <p className="text-xs text-zinc-400">
+              {costedRuns === 0
+                ? "no priced runs yet"
+                : `${costedRuns} extraction(s) · ${(totalTokens / 1000).toFixed(1)}k tokens · ~$${(totalCost / costedRuns).toFixed(4)}/invoice at paid-tier rates`}
+            </p>
+          </div>
           <div className="rounded-xl border border-zinc-200 bg-white p-4">
             <p className="text-sm text-zinc-500">Extraction success rate</p>
             <p

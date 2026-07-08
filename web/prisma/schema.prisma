@@ -182,5 +182,12 @@ model WorkflowRun {
   startedAt      DateTime  @default(now())
   finishedAt     DateTime?
 
+  // LLM cost accounting, from Gemini's usageMetadata. costUsd is computed
+  // at write time with the prices current then (prices change; history
+  // shouldn't). On the free tier this is the estimated paid-tier cost.
+  promptTokens Int?
+  outputTokens Int?
+  costUsd      Decimal? @db.Decimal(10, 6)
+
   @@index([workflowName, startedAt])
 }

@@ -80,7 +80,7 @@
       "typeVersion": 2,
       "position": [880, -100],
       "parameters": {
-        "jsCode": "// Unwraps Gemini's response envelope into our internal report shape.\nconst response = $input.item.json;\nconst candidate = response.candidates?.[0];\nconst text = candidate?.content?.parts?.[0]?.text;\nif (!text) {\n  throw new Error(`Gemini returned no text (finishReason: ${candidate?.finishReason ?? 'unknown'})`);\n}\nconst parsed = JSON.parse(text);\nconst { confidence, warnings, ...fields } = parsed;\nreturn [{ json: { outcome: 'success', data: fields, confidence, warnings: warnings ?? [], n8nExecutionId: $execution.id } }];"
+        "jsCode": "// Unwraps Gemini's response envelope into our internal report shape.\nconst response = $input.item.json;\nconst candidate = response.candidates?.[0];\nconst text = candidate?.content?.parts?.[0]?.text;\nif (!text) {\n  throw new Error(`Gemini returned no text (finishReason: ${candidate?.finishReason ?? 'unknown'})`);\n}\nconst parsed = JSON.parse(text);\nconst { confidence, warnings, ...fields } = parsed;\n\n// Token accounting for cost tracking. Output = total - prompt, which\n// also captures any thinking tokens the model spent.\nconst meta = response.usageMetadata ?? {};\nconst promptTokens = meta.promptTokenCount ?? 0;\nconst outputTokens = Math.max(0, (meta.totalTokenCount ?? 0) - promptTokens);\n\nreturn [{ json: { outcome: 'success', data: fields, confidence, warnings: warnings ?? [], n8nExecutionId: $execution.id, usage: { promptTokens, outputTokens } } }];"
       }
     },
     {

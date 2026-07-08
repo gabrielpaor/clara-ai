@@ -3,6 +3,7 @@
 // matching, sanity flags, duplicate checks (exact + embedding-based),
 // then the auto-approval decision — all audited. n8n stays a dumb pipe;
 // business logic lives in the app.
+import { estimateCostUsd } from "@/lib/cost";
 import { prisma } from "@/lib/db";
 import { computeFlagsAndVendor } from "@/lib/enrichment";
 import { transitionInvoice } from "@/lib/invoices";
@@ -79,7 +80,8 @@ export async function POST(
   const report = parsed.data;
 
   // Observability: one WorkflowRun row per extraction outcome, linked to
-  // n8n's execution id so the health panel can point at the exact run.
+  // n8n's execution id so the health panel can point at the exact run —
+  // now with token/cost accounting from Gemini's usageMetadata.
   await prisma.workflowRun.create({
     data: {
       workflowName: "invoice-extraction",
@@ -88,6 +90,9 @@ export async function POST(
       status: report.outcome === "success" ? "SUCCESS" : "FAILED",
       error: report.outcome === "failure" ? report.error.slice(0, 1000) : null,
       finishedAt: new Date(),
+      promptTokens: report.usage?.promptTokens,
+      outputTokens: report.usage?.outputTokens,
+      costUsd: report.usage ? estimateCostUsd(report.usage) : null,
     },
   });
 

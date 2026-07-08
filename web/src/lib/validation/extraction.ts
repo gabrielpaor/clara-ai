@@ -26,6 +26,14 @@ export const extractedFieldsSchema = z.object({
   total: money,
 });
 
+/** Token usage from Gemini's usageMetadata, forwarded by the workflow. */
+const usageSchema = z
+  .object({
+    promptTokens: z.number().int().nonnegative(),
+    outputTokens: z.number().int().nonnegative(),
+  })
+  .optional();
+
 export const extractionReportSchema = z.discriminatedUnion("outcome", [
   z.object({
     outcome: z.literal("success"),
@@ -37,11 +45,13 @@ export const extractionReportSchema = z.discriminatedUnion("outcome", [
     embedding: z.array(z.number()).length(768).nullable().optional(),
     // n8n execution id — links the WorkflowRun record to n8n's own log.
     n8nExecutionId: z.string().optional(),
+    usage: usageSchema,
   }),
   z.object({
     outcome: z.literal("failure"),
     error: z.string().min(1),
     n8nExecutionId: z.string().optional(),
+    usage: usageSchema,
   }),
 ]);
 
