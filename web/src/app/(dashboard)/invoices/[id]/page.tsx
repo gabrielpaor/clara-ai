@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ExtractedFields } from "@/components/extracted-fields";
 import { ReviewActions } from "@/components/review-actions";
 import { RetryButton } from "@/components/retry-button";
 import { StatusBadge } from "@/components/status-badge";
 import { prisma } from "@/lib/db";
-import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
+import { formatDateTime } from "@/lib/format";
 
 const ACTOR_STYLES: Record<string, string> = {
   AI: "bg-violet-100 text-violet-700",
@@ -30,16 +31,18 @@ export default async function InvoiceDetailPage({
   });
   if (!invoice) notFound();
 
-  const fields = [
-    { label: "Vendor (matched)", value: invoice.vendor?.name ?? "— not matched —" },
-    { label: "Vendor (as printed)", value: invoice.vendorNameRaw ?? "—" },
-    { label: "Invoice #", value: invoice.invoiceNumber ?? "—" },
-    { label: "Invoice date", value: formatDate(invoice.invoiceDate) },
-    { label: "Due date", value: formatDate(invoice.dueDate) },
-    { label: "Subtotal", value: formatMoney(invoice.subtotal?.toString() ?? null, invoice.currency) },
-    { label: "Tax", value: formatMoney(invoice.tax?.toString() ?? null, invoice.currency) },
-    { label: "Total", value: formatMoney(invoice.total?.toString() ?? null, invoice.currency) },
-  ];
+  // Serialized for the client component: dates as YYYY-MM-DD (editable in
+  // <input type="date">), money as fixed-2 strings.
+  const fieldValues = {
+    vendorName: invoice.vendorNameRaw,
+    invoiceNumber: invoice.invoiceNumber,
+    invoiceDate: invoice.invoiceDate?.toISOString().slice(0, 10) ?? null,
+    dueDate: invoice.dueDate?.toISOString().slice(0, 10) ?? null,
+    currency: invoice.currency,
+    subtotal: invoice.subtotal ? Number(invoice.subtotal.toString()).toFixed(2) : null,
+    tax: invoice.tax ? Number(invoice.tax.toString()).toFixed(2) : null,
+    total: invoice.total ? Number(invoice.total.toString()).toFixed(2) : null,
+  };
 
   return (
     <div className="space-y-6">
@@ -68,24 +71,13 @@ export default async function InvoiceDetailPage({
 
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="space-y-6">
-          <section className="rounded-xl border border-zinc-200 bg-white p-5">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="font-medium text-zinc-900">Extracted data</h2>
-              {invoice.confidence !== null && (
-                <span className="text-sm text-zinc-500">
-                  Confidence: {Math.round(invoice.confidence * 100)}%
-                </span>
-              )}
-            </div>
-            <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
-              {fields.map((f) => (
-                <div key={f.label}>
-                  <dt className="text-zinc-500">{f.label}</dt>
-                  <dd className="font-medium text-zinc-900">{f.value}</dd>
-                </div>
-              ))}
-            </dl>
-          </section>
+          <ExtractedFields
+            invoiceId={invoice.id}
+            editable={invoice.status === "NEEDS_REVIEW"}
+            initial={fieldValues}
+            matchedVendor={invoice.vendor?.name ?? null}
+            confidence={invoice.confidence}
+          />
 
           <section className="rounded-xl border border-zinc-200 bg-white p-5">
             <h2 className="mb-4 font-medium text-zinc-900">Audit trail</h2>

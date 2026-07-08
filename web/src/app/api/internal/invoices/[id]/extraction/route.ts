@@ -4,14 +4,12 @@
 // then the auto-approval decision — all audited. n8n stays a dumb pipe;
 // business logic lives in the app.
 import { prisma } from "@/lib/db";
+import { computeFlagsAndVendor } from "@/lib/enrichment";
 import { transitionInvoice } from "@/lib/invoices";
 import { isInternalRequest, unauthorized } from "@/lib/internal-auth";
 import { notifyInvoiceOutcome } from "@/lib/notify";
 import { evaluateInvoice } from "@/lib/rules";
-import {
-  extractionReportSchema,
-  type ExtractedFields,
-} from "@/lib/validation/extraction";
+import { extractionReportSchema } from "@/lib/validation/extraction";
 
 /** Cosine similarity above which two invoices are considered near-duplicates. */
 const NEAR_DUPLICATE_THRESHOLD = 0.95;
@@ -23,44 +21,6 @@ function toDecimalString(value: number | null): string | null {
 
 function toUtcDate(value: string | null): Date | null {
   return value === null ? null : new Date(`${value}T00:00:00Z`);
-}
-
-async function computeFlagsAndVendor(invoiceId: string, data: ExtractedFields) {
-  const flags: string[] = [];
-
-  const vendor = data.vendorName
-    ? await prisma.vendor.findFirst({
-        where: { name: { equals: data.vendorName, mode: "insensitive" } },
-      })
-    : null;
-  if (!vendor) flags.push("UNKNOWN_VENDOR");
-
-  if (data.subtotal !== null && data.tax !== null && data.total !== null) {
-    if (Math.abs(data.subtotal + data.tax - data.total) > 0.01) {
-      flags.push("TOTALS_MISMATCH");
-    }
-  }
-
-  // Exact duplicate: the DB constraint on (vendorId, invoiceNumber) is the
-  // hard guard; we pre-check so a duplicate becomes a reviewable flag
-  // instead of a 500.
-  let duplicateOf: string | null = null;
-  if (vendor && data.invoiceNumber) {
-    const existing = await prisma.invoice.findFirst({
-      where: {
-        vendorId: vendor.id,
-        invoiceNumber: data.invoiceNumber,
-        id: { not: invoiceId },
-      },
-      select: { id: true },
-    });
-    if (existing) {
-      flags.push("DUPLICATE_SUSPECTED");
-      duplicateOf = existing.id;
-    }
-  }
-
-  return { flags, vendor, duplicateOf };
 }
 
 /**
