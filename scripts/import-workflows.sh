@@ -11,7 +11,7 @@ for f in n8n/workflows/*.json; do
 done
 
 # Workflow ids are pinned in the JSON files
-for id in ClaraInvoiceExtr ClaraEmailIngest ClaraNotify00001 ClaraErrorHandlr ClaraMaintenance; do
+for id in ClaraInvoiceExtr ClaraEmailIngest ClaraNotify00001 ClaraErrorHandlr ClaraMaintenance ClaraBatchDisp01; do
   docker compose exec -T n8n n8n publish:workflow --id="$id"
 done
 

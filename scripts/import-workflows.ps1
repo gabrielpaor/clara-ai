@@ -9,7 +9,7 @@ Get-ChildItem n8n\workflows\*.json | ForEach-Object {
 }
 
 # Workflow ids are pinned in the JSON files
-foreach ($id in @("ClaraInvoiceExtr", "ClaraEmailIngest", "ClaraNotify00001", "ClaraErrorHandlr", "ClaraMaintenance")) {
+foreach ($id in @("ClaraInvoiceExtr", "ClaraEmailIngest", "ClaraNotify00001", "ClaraErrorHandlr", "ClaraMaintenance", "ClaraBatchDisp01")) {
     docker compose exec -T n8n n8n publish:workflow --id=$id
 }
 

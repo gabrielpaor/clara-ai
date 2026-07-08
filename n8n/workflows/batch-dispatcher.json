@@ -1,0 +1,50 @@
+{
+  "id": "ClaraBatchDisp01",
+  "name": "Clara — Batch Dispatcher",
+  "active": true,
+  "settings": { "executionOrder": "v1", "errorWorkflow": "ClaraErrorHandlr" },
+  "nodes": [
+    {
+      "id": "node-schedule-minute",
+      "name": "Every minute",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0],
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "minutes", "minutesInterval": 1 }]
+        }
+      }
+    },
+    {
+      "id": "node-dispatch-pending",
+      "name": "Dispatch pending invoices",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 0],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:3000/api/internal/maintenance/dispatch-pending",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ClaraInternalKey",
+          "name": "Clara Internal API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every minute": {
+      "main": [
+        [{ "node": "Dispatch pending invoices", "type": "main", "index": 0 }]
+      ]
+    }
+  }
+}

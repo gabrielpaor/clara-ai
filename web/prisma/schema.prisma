@@ -65,6 +65,21 @@ model User {
   role         UserRole   @default(REVIEWER)
   createdAt    DateTime   @default(now())
   auditEntries AuditLog[]
+  batches      Batch[]
+}
+
+/// A group of invoices uploaded together (multi-file select or a ZIP).
+/// Batch items are created as RECEIVED and drip-fed to extraction by the
+/// batch-dispatcher workflow, so a 50-invoice ZIP can't stampede the LLM
+/// rate limit. Batch progress = its invoices' statuses, always derived,
+/// never denormalized.
+model Batch {
+  id          String    @id @default(cuid())
+  label       String // zip filename or "N files"
+  createdById String?
+  createdBy   User?     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now())
+  invoices    Invoice[]
 }
 
 /// Master data: the companies that send us invoices. Extraction matches
@@ -93,6 +108,9 @@ model Invoice {
   /// External origin id — for EMAIL invoices, the Gmail message id. Used to
   /// skip re-ingesting a message the poller has already delivered.
   sourceRef   String?
+  /// Set when the invoice arrived as part of a batch upload
+  batchId     String?
+  batch       Batch?  @relation(fields: [batchId], references: [id])
 
   // Extracted fields — all nullable: they don't exist until extraction succeeds
   vendorId      String?
@@ -128,6 +146,7 @@ model Invoice {
   @@index([status])
   @@index([createdAt])
   @@index([sourceRef])
+  @@index([batchId])
 }
 
 /// Append-only. Every state transition and every decision (AI or human)

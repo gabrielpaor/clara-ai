@@ -14,8 +14,17 @@ export interface IntakeInput {
   bytes: Buffer;
   /** External origin id (e.g. Gmail message id) for ingest dedup */
   sourceRef?: string;
+  /** Set when the invoice arrived as part of a batch upload */
+  batchId?: string;
   /** Human-readable provenance for the audit log */
   receivedVia: string;
+  /**
+   * When true, the invoice is created as RECEIVED but NOT handed to n8n.
+   * Batch items use this: the batch-dispatcher workflow drip-feeds them
+   * to extraction a few per minute, so a 50-invoice ZIP never stampedes
+   * the LLM rate limit.
+   */
+  deferDispatch?: boolean;
 }
 
 export async function createAndDispatchInvoice(input: IntakeInput) {
@@ -28,6 +37,7 @@ export async function createAndDispatchInvoice(input: IntakeInput) {
         fileName: input.fileName,
         mimeType: input.mimeType,
         sourceRef: input.sourceRef,
+        batchId: input.batchId,
         storagePath: "",
       },
     });
@@ -53,10 +63,22 @@ export async function createAndDispatchInvoice(input: IntakeInput) {
     data: { storagePath },
   });
 
-  const handoff = await fireExtractionWebhook(invoice.id);
+  if (input.deferDispatch) return invoice;
+
+  return handoffToExtraction(invoice.id);
+}
+
+/**
+ * Fires the extraction webhook for a RECEIVED invoice and records the
+ * outcome as a transition. Used by direct intake and by the batch
+ * dispatcher. The atomic transition guard makes concurrent callers safe:
+ * if two dispatchers grab the same invoice, exactly one wins.
+ */
+export async function handoffToExtraction(invoiceId: string) {
+  const handoff = await fireExtractionWebhook(invoiceId);
 
   return transitionInvoice({
-    invoiceId: invoice.id,
+    invoiceId,
     to: handoff.ok ? "EXTRACTING" : "FAILED",
     actor: "SYSTEM",
     action: handoff.ok ? "EXTRACTION_STARTED" : "HANDOFF_FAILED",

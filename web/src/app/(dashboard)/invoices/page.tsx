@@ -9,24 +9,52 @@ const STATUSES = Object.values(InvoiceStatus);
 export default async function InvoicesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string }>;
+  searchParams: Promise<{ status?: string; batch?: string }>;
 }) {
-  const { status } = await searchParams;
+  const { status, batch } = await searchParams;
   const filter =
     status && STATUSES.includes(status as InvoiceStatus)
       ? (status as InvoiceStatus)
       : undefined;
 
-  const invoices = await prisma.invoice.findMany({
-    where: filter ? { status: filter } : undefined,
-    orderBy: { createdAt: "desc" },
-    take: 100,
-    include: { vendor: { select: { name: true } } },
-  });
+  const [invoices, batchInfo] = await Promise.all([
+    prisma.invoice.findMany({
+      where: {
+        ...(filter ? { status: filter } : {}),
+        ...(batch ? { batchId: batch } : {}),
+      },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+      include: { vendor: { select: { name: true } } },
+    }),
+    batch
+      ? prisma.batch.findUnique({
+          where: { id: batch },
+          select: { label: true, createdAt: true },
+        })
+      : null,
+  ]);
 
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-semibold text-zinc-900">Invoices</h1>
+
+      {batch && (
+        <div className="flex items-center gap-3 rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm">
+          <span className="text-zinc-600">
+            Batch: <span className="font-medium text-zinc-900">{batchInfo?.label ?? batch}</span>
+            {" · "}
+            {invoices.length} invoice(s)
+            {" · "}
+            {invoices.filter((i) => i.status === "RECEIVED").length} waiting
+            {" · "}
+            {invoices.filter((i) => i.status === "EXTRACTING").length} processing
+          </span>
+          <Link href="/invoices" className="ml-auto text-zinc-500 hover:text-zinc-900">
+            Clear ✕
+          </Link>
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-2">
         <FilterTab href="/invoices" label="All" active={!filter} />

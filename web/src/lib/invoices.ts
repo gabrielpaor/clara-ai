@@ -56,9 +56,23 @@ export async function transitionInvoice(input: TransitionInput) {
       throw new InvalidTransitionError(invoice.status, input.to);
     }
 
-    const updated = await tx.invoice.update({
-      where: { id: input.invoiceId },
+    // Optimistic concurrency: the WHERE clause carries the status we
+    // validated against. If a concurrent transaction moved the invoice
+    // between our read and this write, Postgres re-evaluates the
+    // predicate after the row lock is released and count comes back 0 —
+    // exactly one of two racing transitions can ever win. Without this,
+    // two simultaneous callers (double-clicked Approve, a late n8n
+    // callback racing the sweeper) could both apply.
+    const result = await tx.invoice.updateMany({
+      where: { id: input.invoiceId, status: invoice.status },
       data: { status: input.to },
+    });
+    if (result.count === 0) {
+      throw new InvalidTransitionError(invoice.status, input.to);
+    }
+
+    const updated = await tx.invoice.findUniqueOrThrow({
+      where: { id: input.invoiceId },
     });
 
     await tx.auditLog.create({
