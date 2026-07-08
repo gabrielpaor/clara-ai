@@ -3,6 +3,9 @@
 .env.local
 .env.*.local
 
+# Personal interview prep — intentionally kept out of the public repo
+INTERVIEW_PREPARATION.md
+
 # Dependencies
 node_modules/
 

@@ -107,6 +107,9 @@ seed script — change it immediately for any non-local use).
   with alternatives considered, invoice lifecycle state machine
 - **[Deployment](docs/deployment.md)** — production topology, free-tier
   reality check, security hardening checklist
+- **[n8n guide](docs/n8n-guide.md)** — the automation layer explained
+  for web developers: triggers, nodes, the workflow JSON format, and how
+  data flows
 - **[Demo script](docs/demo-script.md)** — the 5-minute tour
 - **[Learning notes](docs/learning-notes.md)** — every concept in the
   build, plus the war stories (503 outages, binary-data stubs, Prisma

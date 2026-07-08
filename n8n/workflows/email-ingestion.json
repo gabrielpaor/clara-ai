@@ -28,7 +28,7 @@
       "name": "Expand attachments",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [220, 0],
+      "position": [224, 0],
       "parameters": {
         "jsCode": "// One email can carry several attachments; fan out to one item per\n// usable document. Policy (allowlist, dedup) is NOT decided here — the\n// app owns that; this node only reshapes data.\n//\n// IMPORTANT: attachment bytes are fetched via getBinaryDataBuffer, never\n// read from item.binary[key].data directly — depending on n8n's binary\n// storage mode, .data can be a reference stub instead of real base64.\nconst ALLOWED = new Set(['application/pdf', 'image/png', 'image/jpeg', 'image/webp']);\nconst out = [];\nconst items = $input.all();\nfor (let i = 0; i < items.length; i++) {\n  const item = items[i];\n  const sender =\n    item.json.from?.value?.[0]?.address ??\n    String(item.json.from ?? '').match(/[\\w.+-]+@[\\w-]+\\.[\\w.-]+/)?.[0] ??\n    null;\n  if (!sender) continue;\n  const subject = item.json.subject ?? '(no subject)';\n  const messageId = item.json.id;\n  for (const key of Object.keys(item.binary ?? {})) {\n    const att = item.binary[key];\n    if (!ALLOWED.has(att.mimeType)) continue;\n    const buffer = await this.helpers.getBinaryDataBuffer(i, key);\n    out.push({\n      json: {\n        fileName: att.fileName ?? `${key}`,\n        mimeType: att.mimeType,\n        data: buffer.toString('base64'),\n        sender,\n        subject,\n        messageId\n      }\n    });\n  }\n}\nreturn out; // empty array = nothing to do, execution ends quietly"
       }
@@ -38,7 +38,7 @@
       "name": "Deliver to app",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [440, 0],
+      "position": [448, 0],
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 5000,
@@ -58,6 +58,23 @@
           "name": "Clara Internal API"
         }
       }
+    },
+    {
+      "id": "77d6dd83-c704-4df3-8bde-2e6732ec054c",
+      "name": "Mark a message as read",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [656, 0],
+      "parameters": {
+        "operation": "markAsRead",
+        "messageId": "={{ $('Expand attachments').item.json.messageId }}"
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "ClaraGmailOAuth2",
+          "name": "Clara Gmail"
+        }
+      }
     }
   ],
   "connections": {
@@ -69,6 +86,11 @@
     "Expand attachments": {
       "main": [
         [{ "node": "Deliver to app", "type": "main", "index": 0 }]
+      ]
+    },
+    "Deliver to app": {
+      "main": [
+        [{ "node": "Mark a message as read", "type": "main", "index": 0 }]
       ]
     }
   }
